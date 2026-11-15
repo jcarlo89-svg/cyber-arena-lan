@@ -28,7 +28,6 @@ def cargar_estado():
         except Exception:
             pass
             
-    # Estado inicial por defecto si no existe o hay error
     return {
         "teams": {
             "admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}
@@ -44,7 +43,6 @@ def guardar_estado(state):
     except Exception:
         pass
 
-# Cargar estado actual
 state = cargar_estado()
 
 # ==========================================
@@ -265,4 +263,105 @@ defenses_actuales = my_data.get("defenses_active", [])
 nuevas_defensas = []
 
 for proto in PROTOCOLOS_DISPONIBLES:
-    is_checked = st.checkbox(
+    is_checked = st.checkbox(f"Bloquear / Asegurar {proto}", value=(proto in defenses_actuales), key=f"def_{login_user}_{proto}")
+    if is_checked:
+        nuevas_defensas.append(proto)
+
+if set(nuevas_defensas) != set(defenses_actuales):
+    state["teams"][login_user]["defenses_active"] = nuevas_defensas
+    guardar_estado(state)
+    st.rerun()
+
+st.markdown("---")
+
+st.subheader("⚔️ Panel de Ataque - Escaneo de Protocolos (Red Team)")
+rivales_disponibles = [g for g in state.get("groups", {}).keys() if g != login_user]
+
+if not rivales_disponibles:
+    st.warning("No hay otros grupos conectados para atacar.")
+else:
+    target_group = st.selectbox("Selecciona el Grupo Rival a Escanear/Atacar", rivales_disponibles)
+    target_ip = state["groups"][target_group]
+    st.text(f"IP Objetivo: {target_ip}")
+    
+    protocolos_a_atacar = []
+    for proto in PROTOCOLOS_DISPONIBLES:
+        if st.checkbox(f"Atacar {proto}", key=f"atk_{proto}"):
+            protocolos_a_atacar.append(proto)
+
+    if st.button("⚡ Ejecutar Ataque por Protocolos Seleccionados", type="primary"):
+        if not protocolos_a_atacar:
+            st.error("Debes seleccionar al menos un protocolo para lanzar el ataque.")
+        else:
+            defender = state["teams"][target_group]
+            defensas_rival = defender.get("defenses_active", [])
+            
+            no_bloqueados = [p for p in protocolos_a_atacar if p not in defensas_rival]
+            bloqueados = [p for p in protocolos_a_atacar if p in defensas_rival]
+            
+            num_exitos = len(no_bloqueados)
+            puntos_ganados = num_exitos * 100
+            dano_defensa = num_exitos * 100
+            
+            if bloqueados:
+                state["teams"][login_user]["streak"] = 0
+                racha_rota = True
+            else:
+                racha_rota = False
+
+            if num_exitos > 0:
+                state["teams"][login_user]["score"] += puntos_ganados
+                defender["defense"] = max(0, defender["defense"] - dano_defensa)
+                
+                if not racha_rota:
+                    current_streak = state["teams"][login_user].get("streak", 0) + 1
+                    state["teams"][login_user]["streak"] = current_streak
+                else:
+                    current_streak = 0
+                
+                if current_streak >= 5:
+                    dota_effect = f"GODLIKE! ({current_streak}ª Racha Perfecta)"
+                elif current_streak == 4:
+                    dota_effect = f"RAMPAGE! ({current_streak}ª Racha Perfecta)"
+                elif current_streak == 3:
+                    dota_effect = f"UNSTOPPABLE! ({current_streak}ª Racha Perfecta)"
+                elif current_streak == 2:
+                    dota_effect = f"DOMINATING! ({current_streak}ª Racha Perfecta)"
+                else:
+                    dota_effect = "FIRST BLOOD! / BREACH DETECTED!"
+
+                if racha_rota:
+                    msg_text = f"⚠️ {login_user} penetró parcialmente ({', '.join(no_bloqueados)}), ¡pero {target_group} bloqueó {', '.join(bloqueados)}! Racha rota a 0. (+{puntos_ganados} pts)."
+                    msg_type = "error"
+                else:
+                    msg_text = f"🚀 {login_user} hackeo limpio a {target_group} ({target_ip}) explotando: {', '.join(no_bloqueados)}. (+{puntos_ganados} pts)."
+                    msg_type = "success"
+            else:
+                state["teams"][login_user]["streak"] = 0
+                dota_effect = "STREAK ENDED / TOTAL DEFENSE HOLD!"
+                msg_text = f"🛡️ ¡{target_group} bloqueó ABSOLUTAMENTE todo! Ataque repelido por completo. Racha en 0."
+                msg_type = "error"
+
+            state["last_attack_msg"] = {"type": msg_type, "text": msg_text, "dota_effect": dota_effect}
+            guardar_estado(state)
+            st.rerun()
+
+st.markdown("---")
+
+st.subheader("📋 Estado General de la Red en Vivo")
+table_data = []
+for g, ip in state.get("groups", {}).items():
+    t_data = state["teams"].get(g, {"score": 0, "defense": 1000, "defenses_active": [], "streak": 0})
+    table_data.append({
+        "Grupo": g,
+        "IP Fija": ip,
+        "Score Ataque": t_data["score"],
+        "Salud Defensiva": t_data["defense"],
+        "Racha 🔥": t_data.get("streak", 0),
+        "Protocolos Asegurados": ", ".join([p.split()[0] for p in t_data.get("defenses_active", [])]) if t_data.get("defenses_active") else "Ninguno ⚠️"
+    })
+
+st.table(table_data)
+
+if st.button("🔄 Actualizar Tabla General"):
+    st.rerun()
