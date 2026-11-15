@@ -14,10 +14,10 @@ def cargar_estado():
             with open(DB_FILE, "r") as f:
                 content = f.read().strip()
                 if not content:
-                    return {"teams": {}, "groups": {}, "last_attack_msg": None}
+                    return {"teams": {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}, "groups": {}, "last_attack_msg": None}
                 data = json.loads(content)
                 if not isinstance(data, dict):
-                    return {"teams": {}, "groups": {}, "last_attack_msg": None}
+                    return {"teams": {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}, "groups": {}, "last_attack_msg": None}
                 if "teams" not in data:
                     data["teams"] = {}
                 if "groups" not in data:
@@ -26,7 +26,9 @@ def cargar_estado():
                     data["last_attack_msg"] = None
                 return data
         except Exception:
-            return {"teams": {}, "groups": {}, "last_attack_msg": None}
+            pass
+            
+    # Estado inicial por defecto si no existe o hay error
     return {
         "teams": {
             "admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}
@@ -106,7 +108,7 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
     st.subheader("📊 Tabla de Posiciones en Vivo (Live Leaderboard)")
     
     equipos_ordenados = []
-    for g, ip in state["groups"].items():
+    for g, ip in state.get("groups", {}).items():
         t_data = state["teams"].get(g, {"score": 0, "defense": 1000, "defenses_active": [], "streak": 0})
         equipos_ordenados.append({
             "Grupo": g,
@@ -137,7 +139,7 @@ if login_user.lower() == "admin":
     st.sidebar.success("✅ Sesión: ADMINISTRADOR")
     st.header("🛠️ Panel de Administración de Red")
     
-    with st.form("form_crear_grupo"):
+    with st.form("form_crear_grupo", clear_on_submit=True):
         st.subheader("➕ Registrar Nuevo Grupo")
         nuevo_grupo = st.text_input("Nombre del Grupo (Ej. Equipo-Alfa)")
         nueva_ip = st.text_input("IP Fija (Ej. 192.168.128.15)")
@@ -170,8 +172,7 @@ if login_user.lower() == "admin":
     
     with col_admin1:
         if st.button("🧹 Reiniciar Puntajes y Rachas (Mantener Grupos e IPs)", type="primary"):
-            # Reiniciar únicamente puntajes, salud, defensas y rachas de los grupos existentes, sin borrarlos
-            for g in state["groups"].keys():
+            for g in state.get("groups", {}).keys():
                 state["teams"][g] = {
                     "ip": state["groups"][g],
                     "role": "team",
@@ -196,7 +197,7 @@ if login_user.lower() == "admin":
 
     st.markdown("---")
     st.subheader("📋 Estado Actual de Grupos y Red")
-    if state["groups"]:
+    if state.get("groups"):
         admin_table = []
         for g, ip in state["groups"].items():
             t_data = state["teams"].get(g, {"score": 0, "defense": 1000, "streak": 0})
@@ -214,4 +215,54 @@ if login_user.lower() == "admin":
     st.stop()
 
 # ==========================================
-# V
+# VISTA DE EQUIPOS PARTICIPANTES
+# ==========================================
+if login_user not in state.get("groups", {}):
+    st.error(f"[!] El usuario '{login_user}' no está registrado en la red. Solicita al administrador que cree tu grupo.")
+    st.stop()
+
+if login_user not in state["teams"]:
+    state["teams"][login_user] = {
+        "ip": state["groups"][login_user],
+        "role": "team",
+        "score": 0,
+        "defense": 1000,
+        "defenses_active": [],
+        "streak": 0
+    }
+    guardar_estado(state)
+
+my_data = state["teams"][login_user]
+my_ip = state["groups"][login_user]
+
+st.sidebar.success(f"Sesión: **{login_user}**")
+st.sidebar.info(f"IP: **{my_ip}**")
+
+st.header(f"Panel de Control: {login_user}")
+
+if st.button("🔄 Actualizar Mis Datos / Ver Últimos Eventos"):
+    st.rerun()
+
+if state.get("last_attack_msg"):
+    msg_info = state["last_attack_msg"]
+    if msg_info["type"] == "success":
+        st.success(msg_info["text"])
+    else:
+        st.error(msg_info["text"])
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric(label="Score de Ataque", value=my_data["score"])
+with col2:
+    st.metric(label="Salud Defensiva", value=my_data["defense"])
+with col3:
+    st.metric(label="Racha Actual (Streak)", value=my_data.get("streak", 0))
+
+st.markdown("---")
+
+st.subheader("🛡️ Panel Defensivo - Bloqueo de Protocolos (Blue Team)")
+defenses_actuales = my_data.get("defenses_active", [])
+nuevas_defensas = []
+
+for proto in PROTOCOLOS_DISPONIBLES:
+    is_checked = st.checkbox(
