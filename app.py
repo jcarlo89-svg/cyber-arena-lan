@@ -14,10 +14,10 @@ def cargar_estado():
             with open(DB_FILE, "r") as f:
                 content = f.read().strip()
                 if not content:
-                    return {"teams": {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}, "groups": {}, "active_spectator_groups": [], "game_mode": "Rondas", "max_rounds": 5, "current_round": 1, "teams_attacked_this_round": [], "game_over": False, "winner_msg": None, "last_attack_msg": None}
+                    return {"teams": {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}, "groups": {}, "active_spectator_groups": [], "game_mode": "Rondas", "max_rounds": 5, "current_round": 1, "game_over": False, "winner_msg": None, "last_attack_msg": None}
                 data = json.loads(content)
                 if not isinstance(data, dict):
-                    return {"teams": {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}, "groups": {}, "active_spectator_groups": [], "game_mode": "Rondas", "max_rounds": 5, "current_round": 1, "teams_attacked_this_round": [], "game_over": False, "winner_msg": None, "last_attack_msg": None}
+                    return {"teams": {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}, "groups": {}, "active_spectator_groups": [], "game_mode": "Rondas", "max_rounds": 5, "current_round": 1, "game_over": False, "winner_msg": None, "last_attack_msg": None}
                 if "teams" not in data:
                     data["teams"] = {}
                 if "groups" not in data:
@@ -30,8 +30,6 @@ def cargar_estado():
                     data["max_rounds"] = 5
                 if "current_round" not in data:
                     data["current_round"] = 1
-                if "teams_attacked_this_round" not in data:
-                    data["teams_attacked_this_round"] = []
                 if "game_over" not in data:
                     data["game_over"] = False
                 if "winner_msg" not in data:
@@ -51,7 +49,6 @@ def cargar_estado():
         "game_mode": "Rondas",
         "max_rounds": 5,
         "current_round": 1,
-        "teams_attacked_this_round": [],
         "game_over": False,
         "winner_msg": None,
         "last_attack_msg": None
@@ -130,7 +127,7 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
         """, unsafe_allow_html=True)
     else:
         if game_mode == "Rondas":
-            st.info(f"📍 **ESTADO DEL TORNEO:** Modo Rondas (Intercambio de Ataque/Defensa) | Ronda **{ronda_actual}** de **{max_rondas}**")
+            st.info(f"📍 **ESTADO DEL TORNEO:** Modo Rondas (Ataque y contraofensiva de defensa) | Ronda **{ronda_actual}** de **{max_rondas}**")
         else:
             st.info(f"📍 **ESTADO DEL TORNEO:** Modo Libre (Sin límite de rondas)")
 
@@ -191,7 +188,7 @@ if login_user.lower() == "admin":
     st.sidebar.success("✅ Sesión: ADMINISTRADOR")
     st.header("🛠️ Panel de Administración de Red")
     
-    st.subheader("⚙️ Configuración del Modo de Juego")
+    st.subheader("⚙️ Configuración del Modo de Juego y Rondas")
     with st.form("form_config_modo"):
         selected_mode = st.radio("Selecciona el Modo de Partida", options=["Rondas", "Libre"], index=0 if state.get("game_mode", "Rondas") == "Rondas" else 1)
         nueva_max_rondas = st.number_input("Cantidad Máxima de Rondas", min_value=1, max_value=20, value=int(state.get("max_rounds", 5)))
@@ -205,6 +202,20 @@ if login_user.lower() == "admin":
                 state["winner_msg"] = None
             guardar_estado(state)
             st.success(f"¡Modo configurado a **{selected_mode}** con éxito!")
+            st.rerun()
+
+    # Control manual para avanzar de ronda tras el intercambio completo (Ataque y contraataque)
+    if state.get("game_mode", "Rondas") == "Rondas" and not state.get("game_over", False):
+        st.markdown("---")
+        st.subheader("🕹️ Control de Intercambio de Ronda")
+        st.info(f"Ronda Actual: **{state.get('current_round', 1)}** de **{state.get('max_rounds', 5)}**. (Haz clic aquí cuando ambos equipos hayan atacado y defendido en este ciclo).")
+        if st.button("⏩ Avanzar a la Siguiente Ronda (Cerrar Intercambio Actual)", type="primary"):
+            state["current_round"] += 1
+            if state["current_round"] > state["max_rounds"]:
+                state["game_over"] = True
+                state["winner_msg"] = calcular_ganador(state)
+            guardar_estado(state)
+            st.success(f"¡Ronda avanzada con éxito! Ronda actual: {state['current_round']}")
             st.rerun()
 
     st.markdown("---")
@@ -278,7 +289,6 @@ if login_user.lower() == "admin":
                     "streak": 0
                 }
             state["current_round"] = 1
-            state["teams_attacked_this_round"] = []
             state["game_over"] = False
             state["winner_msg"] = None
             state["last_attack_msg"] = None
@@ -292,7 +302,6 @@ if login_user.lower() == "admin":
             state["groups"] = {}
             state["active_spectator_groups"] = []
             state["current_round"] = 1
-            state["teams_attacked_this_round"] = []
             state["game_over"] = False
             state["winner_msg"] = None
             state["last_attack_msg"] = None
@@ -355,17 +364,10 @@ if game_mode == "Rondas" and state.get("game_over", False):
     st.error(f"🛑 **PARTIDA FINALIZADA** — {state.get('winner_msg')}")
     st.stop()
 
-# Mostrar estado de la ronda y ciclo de intercambio
-teams_ha_atacado = state.get("teams_attacked_this_round", [])
-grupos_activos_total = state.get("active_spectator_groups", list(state.get("groups", {}).keys()))
-
 if game_mode == "Rondas":
-    st.info(f"⚔️ **Modo Rondas (Intercambio Dual):** Ronda actual **{state.get('current_round', 1)}** / {state.get('max_rounds', 5)} | Equipos que ya atacaron en esta ronda: {len(teams_ha_atacado)} / {len(grupos_activos_total)}")
+    st.info(f"⚔️ **Modo Rondas (Intercambio Dual):** Ronda actual **{state.get('current_round', 1)}** / {state.get('max_rounds', 5)} (El equipo ataca y el rival contraataca en su turno)")
 else:
-    st.info(f"♾️ **Modo Libre:** Practica y compite intercambiando ataques y defensas libremente.")
-
-if login_user in teams_ha_atacado and game_mode == "Rondas":
-    st.warning("⚠️ Ya realizaste tu ataque en esta ronda. Espera a que los demás equipos completen su turno de ataque para avanzar a la siguiente ronda (o espera la contraofensiva).")
+    st.info(f"♾️ **Modo Libre:** Practica y compite sin límite de rondas.")
 
 if state.get("last_attack_msg"):
     msg_info = state["last_attack_msg"]
@@ -408,7 +410,7 @@ st.markdown("---")
 # FASE 2: PANEL DE ATAQUE
 # ==========================================
 st.subheader("⚔️ Fase 2: Panel de Ataque - Escaneo y Explotación (Red Team)")
-st.markdown("Selecciona el equipo rival y los protocolos que deseas vulnerar:")
+st.markdown("Selecciona el equipo rival y los protocolos que deseas vulnerar en tu turno de ataque:")
 
 rivales_disponibles = [g for g in state.get("groups", {}).keys() if g != login_user]
 
@@ -424,9 +426,7 @@ else:
         if st.checkbox(f"Atacar {proto}", key=f"atk_{proto}"):
             protocolos_a_atacar.append(proto)
 
-    bloquear_boton_ataque = (game_mode == "Rondas" and login_user in teams_ha_atacado)
-
-    if st.button("⚡ Ejecutar Ataque / Intercambiar Turno", type="primary", disabled=bloquear_boton_ataque):
+    if st.button("⚡ Ejecutar Turno de Ataque", type="primary"):
         if not protocolos_a_atacar:
             st.error("Debes seleccionar al menos un protocolo para lanzar el ataque.")
         else:
@@ -480,21 +480,6 @@ else:
                 msg_type = "error"
 
             state["last_attack_msg"] = {"type": msg_type, "text": msg_text, "dota_effect": dota_effect}
-            
-            # Registrar que este equipo ya atacó en la ronda actual
-            if game_mode == "Rondas":
-                if login_user not in state["teams_attacked_this_round"]:
-                    state["teams_attacked_this_round"].append(login_user)
-                
-                # Si todos los equipos activos ya completaron su ataque en esta ronda, avanzamos de ronda y reseteamos el registro de ataques
-                if len(state["teams_attacked_this_round"]) >= len(grupos_activos_total):
-                    state["current_round"] += 1
-                    state["teams_attacked_this_round"] = [] # Se limpia para el intercambio de la siguiente ronda
-                    
-                    if state["current_round"] > state["max_rounds"]:
-                        state["game_over"] = True
-                        state["winner_msg"] = calcular_ganador(state)
-
             guardar_estado(state)
             st.rerun()
 
