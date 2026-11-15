@@ -14,16 +14,24 @@ def cargar_estado():
             with open(DB_FILE, "r") as f:
                 content = f.read().strip()
                 if not content:
-                    return {"teams": {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}, "groups": {}, "active_spectator_groups": [], "last_attack_msg": None}
+                    return {"teams": {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}, "groups": {}, "active_spectator_groups": [], "max_rounds": 5, "current_round": 1, "game_over": False, "winner_msg": None, "last_attack_msg": None}
                 data = json.loads(content)
                 if not isinstance(data, dict):
-                    return {"teams": {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}, "groups": {}, "active_spectator_groups": [], "last_attack_msg": None}
+                    return {"teams": {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}, "groups": {}, "active_spectator_groups": [], "max_rounds": 5, "current_round": 1, "game_over": False, "winner_msg": None, "last_attack_msg": None}
                 if "teams" not in data:
                     data["teams"] = {}
                 if "groups" not in data:
                     data["groups"] = {}
                 if "active_spectator_groups" not in data:
                     data["active_spectator_groups"] = []
+                if "max_rounds" not in data:
+                    data["max_rounds"] = 5
+                if "current_round" not in data:
+                    data["current_round"] = 1
+                if "game_over" not in data:
+                    data["game_over"] = False
+                if "winner_msg" not in data:
+                    data["winner_msg"] = None
                 if "last_attack_msg" not in data:
                     data["last_attack_msg"] = None
                 return data
@@ -36,6 +44,10 @@ def cargar_estado():
         },
         "groups": {},
         "active_spectator_groups": [],
+        "max_rounds": 5,
+        "current_round": 1,
+        "game_over": False,
+        "winner_msg": None,
         "last_attack_msg": None
     }
 
@@ -45,6 +57,25 @@ def guardar_estado(state):
             json.dump(state, f)
     except Exception:
         pass
+
+def calcular_ganador(state):
+    grupos_activos = state.get("active_spectator_groups", list(state.get("groups", {}).keys()))
+    if not grupos_activos:
+        return "No hay equipos participantes para determinar un ganador."
+    
+    stats = []
+    for g in grupos_activos:
+        t = state["teams"].get(g, {"score": 0, "defense": 1000})
+        stats.append({"grupo": g, "score": t["score"], "defense": t["defense"]})
+    
+    # Ordenar por score (mayor a menor), luego por defensa (mayor a menor)
+    stats = sorted(stats, key=lambda x: (x["score"], x["defense"]), reverse=True)
+    
+    if len(stats) > 1 and stats[0]["score"] == stats[1]["score"] and stats[0]["defense"] == stats[1]["defense"]:
+        return f"🤝 ¡EMPATE TÉCNICO! Los equipos {stats[0]['grupo']} y {stats[1]['grupo']} terminaron con idénticas estadísticas ({stats[0]['score']} pts, {stats[0]['defense']} salud)."
+    else:
+        ganador = stats[0]
+        return f"🏆 ¡VICTORY! EL GANADOR DE LA ARENA ES EL GRUPO **{ganador['grupo']}** con {ganador['score']} puntos de ataque y {ganador['defense']} de salud defensiva!"
 
 state = cargar_estado()
 
@@ -81,10 +112,23 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
 
     st.markdown("---")
 
-    # Mostrar solo los equipos que el Admin configuró como activos para la proyección
+    # Indicador de Estado de la Partida en Proyector
+    ronda_actual = state.get("current_round", 1)
+    max_rondas = state.get("max_rounds", 5)
+    
+    if state.get("game_over", False):
+        st.markdown(f"""
+        <div style="background-color: #2b0000; border: 4px solid #ff0000; padding: 25px; border-radius: 12px; text-align: center; margin-bottom: 25px;">
+            <h1 style="color: #ff3333; font-size: 42px; margin: 0;">🛑 PARTIDA FINALIZADA 🛑</h1>
+            <h2 style="color: #ffcc00; font-size: 28px; margin-top: 15px;">{state.get('winner_msg')}</h2>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.info(f"📍 **ESTADO DEL TORNEO:** Ronda **{ronda_actual}** de **{max_rondas}** en curso.")
+
     grupos_a_mostrar = state.get("active_spectator_groups", [])
 
-    if state.get("last_attack_msg"):
+    if state.get("last_attack_msg") and not state.get("game_over", False):
         msg_info = state["last_attack_msg"]
         dota_effect = msg_info.get("dota_effect", "ANNOUNCEMENT")
         
@@ -102,12 +146,6 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
                 <p style="color: #ffffff; font-size: 22px; margin-top: 10px;">{msg_info['text']}</p>
             </div>
             """, unsafe_allow_html=True)
-    else:
-        st.markdown("""
-        <div style="background-color: #111; border: 2px dashed #444; padding: 15px; border-radius: 10px; text-align: center; margin-bottom: 25px;">
-            <h3 style="color: #888; margin: 0;">📡 ESPERANDO ACTIVIDAD DE RED... ¡PREPÁRENSE PARA LA CAZA!</h3>
-        </div>
-        """, unsafe_allow_html=True)
 
     st.subheader("📊 Tabla de Posiciones en Vivo (Live Leaderboard)")
     
@@ -143,7 +181,20 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
 # ==========================================
 if login_user.lower() == "admin":
     st.sidebar.success("✅ Sesión: ADMINISTRADOR")
-    st.header("🛠️ Panel de Administración de Red")
+    authorization_header = st.header("🛠️ Panel de Administración de Red")
+    
+    # Configurar Rondas Máximas
+    st.subheader("⚙️ Configuración de Partida")
+    with st.form("form_config_rondas"):
+        nueva_max_rondas = st.number_input("Cantidad Máxima de Rondas", min_value=1, max_value=20, value=int(state.get("max_rounds", 5)))
+        btn_guardar_rondas = st.form_submit_button("Actualizar Límite de Rondas")
+        if btn_guardar_rondas:
+            state["max_rounds"] = int(nueva_max_rondas)
+            guardar_estado(state)
+            st.success(f"¡Límite de rondas actualizado a {state['max_rounds']}!")
+            st.rerun()
+
+    st.markdown("---")
     
     with st.form("form_crear_grupo", clear_on_submit=True):
         st.subheader("➕ Registrar Nuevo Grupo")
@@ -168,7 +219,6 @@ if login_user.lower() == "admin":
                 else:
                     state["teams"][nuevo_grupo]["ip"] = nueva_ip
                 
-                # Añadir automáticamente al proyector si es el primero
                 if nuevo_grupo not in state.get("active_spectator_groups", []):
                     state["active_spectator_groups"].append(nuevo_grupo)
 
@@ -206,7 +256,7 @@ if login_user.lower() == "admin":
     col_admin1, col_admin2 = st.columns(2)
     
     with col_admin1:
-        if st.button("🧹 Reiniciar Puntajes y Rachas (Mantener Grupos e IPs)", type="primary"):
+        if st.button("🧹 Reiniciar Puntajes, Rachas y Volver a Ronda 1", type="primary"):
             for g in state.get("groups", {}).keys():
                 state["teams"][g] = {
                     "ip": state["groups"][g],
@@ -216,9 +266,12 @@ if login_user.lower() == "admin":
                     "defenses_active": [],
                     "streak": 0
                 }
+            state["current_round"] = 1
+            state["game_over"] = False
+            state["winner_msg"] = None
             state["last_attack_msg"] = None
             guardar_estado(state)
-            st.success("¡Puntajes, salud y rachas reseteados para una nueva ronda! Los grupos se mantienen.")
+            st.success("¡Partida reiniciada a la Ronda 1! Puntajes y rachas en cero, manteniendo los grupos.")
             st.rerun()
 
     with col_admin2:
@@ -226,6 +279,9 @@ if login_user.lower() == "admin":
             state["teams"] = {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}
             state["groups"] = {}
             state["active_spectator_groups"] = []
+            state["current_round"] = 1
+            state["game_over"] = False
+            state["winner_msg"] = None
             state["last_attack_msg"] = None
             guardar_estado(state)
             st.success("¡Arena totalmente limpiada!")
@@ -279,6 +335,14 @@ st.header(f"Panel de Control: {login_user}")
 
 if st.button("🔄 Actualizar Mis Datos / Ver Últimos Eventos"):
     st.rerun()
+
+# Validar si el juego ha terminado
+if state.get("game_over", False):
+    st.error(f"🛑 **PARTIDA FINALIZADA** — {state.get('winner_msg')}")
+    st.stop()
+
+# Mostrar indicador de ronda actual
+st.info(f"⚔️ **Ronda actual:** {state.get('current_round', 1)} / {state.get('max_rounds', 5)}")
 
 if state.get("last_attack_msg"):
     msg_info = state["last_attack_msg"]
@@ -382,6 +446,13 @@ else:
                 msg_type = "error"
 
             state["last_attack_msg"] = {"type": msg_type, "text": msg_text, "dota_effect": dota_effect}
+            
+            # Avanzar de ronda tras cada ataque
+            state["current_round"] += 1
+            if state["current_round"] > state["max_rounds"]:
+                state["game_over"] = True
+                state["winner_msg"] = calcular_ganador(state)
+
             guardar_estado(state)
             st.rerun()
 
