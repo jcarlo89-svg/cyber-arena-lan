@@ -14,14 +14,16 @@ def cargar_estado():
             with open(DB_FILE, "r") as f:
                 content = f.read().strip()
                 if not content:
-                    return {"teams": {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}, "groups": {}, "last_attack_msg": None}
+                    return {"teams": {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}, "groups": {}, "active_spectator_groups": [], "last_attack_msg": None}
                 data = json.loads(content)
                 if not isinstance(data, dict):
-                    return {"teams": {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}, "groups": {}, "last_attack_msg": None}
+                    return {"teams": {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}, "groups": {}, "active_spectator_groups": [], "last_attack_msg": None}
                 if "teams" not in data:
                     data["teams"] = {}
                 if "groups" not in data:
                     data["groups"] = {}
+                if "active_spectator_groups" not in data:
+                    data["active_spectator_groups"] = []
                 if "last_attack_msg" not in data:
                     data["last_attack_msg"] = None
                 return data
@@ -33,6 +35,7 @@ def cargar_estado():
             "admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}
         },
         "groups": {},
+        "active_spectator_groups": [],
         "last_attack_msg": None
     }
 
@@ -77,7 +80,10 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
         auto_refresh = st.checkbox("Activar Auto-Refresco (cada 5 segundos)", value=False)
 
     st.markdown("---")
-    
+
+    # Mostrar solo los equipos que el Admin configuró como activos para la proyección
+    grupos_a_mostrar = state.get("active_spectator_groups", [])
+
     if state.get("last_attack_msg"):
         msg_info = state["last_attack_msg"]
         dota_effect = msg_info.get("dota_effect", "ANNOUNCEMENT")
@@ -106,23 +112,25 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
     st.subheader("📊 Tabla de Posiciones en Vivo (Live Leaderboard)")
     
     equipos_ordenados = []
-    for g, ip in state.get("groups", {}).items():
-        t_data = state["teams"].get(g, {"score": 0, "defense": 1000, "defenses_active": [], "streak": 0})
-        equipos_ordenados.append({
-            "Grupo": g,
-            "IP Fija": ip,
-            "Score Ataque": t_data["score"],
-            "Salud Defensiva": t_data["defense"],
-            "Racha Activa 🔥": t_data.get("streak", 0),
-            "Protocolos Asegurados": len(t_data.get("defenses_active", []))
-        })
+    for g in grupos_a_mostrar:
+        if g in state.get("groups", {}):
+            ip = state["groups"][g]
+            t_data = state["teams"].get(g, {"score": 0, "defense": 1000, "defenses_active": [], "streak": 0})
+            equipos_ordenados.append({
+                "Grupo": g,
+                "IP Fija": ip,
+                "Score Ataque": t_data["score"],
+                "Salud Defensiva": t_data["defense"],
+                "Racha Activa 🔥": t_data.get("streak", 0),
+                "Protocolos Asegurados": len(t_data.get("defenses_active", []))
+            })
     
     equipos_ordenados = sorted(equipos_ordenados, key=lambda x: x["Score Ataque"], reverse=True)
     
     if equipos_ordenados:
         st.dataframe(equipos_ordenados, use_container_width=True, height=400)
     else:
-        st.info("No hay equipos participando todavía.")
+        st.info("El administrador aún no ha seleccionado qué equipos mostrar en el proyector.")
 
     if auto_refresh:
         time.sleep(5)
@@ -159,9 +167,38 @@ if login_user.lower() == "admin":
                     }
                 else:
                     state["teams"][nuevo_grupo]["ip"] = nueva_ip
+                
+                # Añadir automáticamente al proyector si es el primero
+                if nuevo_grupo not in state.get("active_spectator_groups", []):
+                    state["active_spectator_groups"].append(nuevo_grupo)
+
                 guardar_estado(state)
                 st.success(f"¡Grupo '{nuevo_grupo}' registrado con éxito!")
                 st.rerun()
+
+    st.markdown("---")
+    st.subheader("📺 Selección de Equipos para el Proyector (Spectator)")
+    st.markdown("Marca qué grupos deseas que salgan en la pantalla gigante de la ronda actual:")
+
+    todos_los_grupos = list(state.get("groups", {}).keys())
+    active_spectators = state.get("active_spectator_groups", [])
+
+    if todos_los_grupos:
+        with st.form("form_selector_proyector"):
+            nuevos_activos = []
+            for g in todos_los_grupos:
+                is_on = st.checkbox(f"Mostrar a **{g}** en el Proyector", value=(g in active_spectators), key=f"proj_{g}")
+                if is_on:
+                    nuevos_activos.append(g)
+            
+            btn_guardar_proyector = st.form_submit_button("💾 Guardar Selección para Proyección")
+            if btn_guardar_proyector:
+                state["active_spectator_groups"] = nuevos_activos
+                guardar_estado(state)
+                st.success("¡Configuración del proyector actualizada con éxito!")
+                st.rerun()
+    else:
+        st.info("Crea grupos primero para poder seleccionarlos aquí.")
 
     st.markdown("---")
     st.subheader("🔄 Control de Rondas y Puntajes")
@@ -188,6 +225,7 @@ if login_user.lower() == "admin":
         if st.button("🗑️ Borrar TODO (Grupos y Puntajes por completo)"):
             state["teams"] = {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}
             state["groups"] = {}
+            state["active_spectator_groups"] = []
             state["last_attack_msg"] = None
             guardar_estado(state)
             st.success("¡Arena totalmente limpiada!")
@@ -204,7 +242,8 @@ if login_user.lower() == "admin":
                 "IP Fija": ip,
                 "Score": t_data["score"],
                 "Salud": t_data["defense"],
-                "Racha": t_data["streak"]
+                "Racha": t_data["streak"],
+                "En Proyector": "✅ Sí" if g in state.get("active_spectator_groups", []) else "❌ No"
             })
         st.table(admin_table)
     else:
