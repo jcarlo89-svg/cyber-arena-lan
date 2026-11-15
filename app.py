@@ -92,7 +92,7 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
         else:
             st.markdown(f"""
             <div style="background-color: #001a1a; border: 3px solid #00ffcc; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 25px;">
-                <h1 style="color: #00ffcc; font-size: 38px; margin: 0;">🛡️ DEFENSE HOLD! (STREAK RESET) 🛡️</h1>
+                <h1 style="color: #00ffcc; font-size: 38px; margin: 0;">🛡️ DEFENSE HOLD / STREAK RESET! 🛡️</h1>
                 <p style="color: #ffffff; font-size: 22px; margin-top: 10px;">{msg_info['text']}</p>
             </div>
             """, unsafe_allow_html=True)
@@ -269,34 +269,46 @@ else:
             puntos_ganados = num_exitos * 100
             dano_defensa = num_exitos * 100
             
+            # REGLA ESTRICTA: Si hay CUALQUIER protocolo bloqueado, la racha se rompe y regresa a 0
+            if bloqueados:
+                state["teams"][login_user]["streak"] = 0
+                racha_rota = True
+            else:
+                racha_rota = False
+
             if num_exitos > 0:
-                # El ataque fue exitoso: sumamos puntos y aumentamos la racha del equipo
                 state["teams"][login_user]["score"] += puntos_ganados
                 defender["defense"] = max(0, defender["defense"] - dano_defensa)
                 
-                # Incrementar racha acumulada
-                current_streak = state["teams"][login_user].get("streak", 0) + 1
-                state["teams"][login_user]["streak"] = current_streak
+                # Si no hubo bloqueos, incrementamos la racha limpia
+                if not racha_rota:
+                    current_streak = state["teams"][login_user].get("streak", 0) + 1
+                    state["teams"][login_user]["streak"] = current_streak
+                else:
+                    current_streak = 0
                 
-                # Asignar efecto épico basado en la racha acumulada en cadena
+                # Efectos Dota
                 if current_streak >= 5:
-                    dota_effect = f"GODLIKE! ({current_streak}ª Racha de Brechas)"
+                    dota_effect = f"GODLIKE! ({current_streak}ª Racha Perfecta)"
                 elif current_streak == 4:
-                    dota_effect = f"RAMPAGE! ({current_streak}ª Racha de Brechas)"
+                    dota_effect = f"RAMPAGE! ({current_streak}ª Racha Perfecta)"
                 elif current_streak == 3:
-                    dota_effect = f"UNSTOPPABLE! ({current_streak}ª Racha de Brechas)"
+                    dota_effect = f"UNSTOPPABLE! ({current_streak}ª Racha Perfecta)"
                 elif current_streak == 2:
-                    dota_effect = f"DOMINATING! ({current_streak}ª Racha de Brechas)"
+                    dota_effect = f"DOMINATING! ({current_streak}ª Racha Perfecta)"
                 else:
                     dota_effect = "FIRST BLOOD! / BREACH DETECTED!"
 
-                msg_text = f"🚀 {login_user} penetró los sistemas de {target_group} ({target_ip}) explotando: {', '.join(no_bloqueados)}. (+{puntos_ganados} pts)."
-                msg_type = "success"
+                if racha_rota:
+                    msg_text = f"⚠️ {login_user} penetró parcialmente ({', '.join(no_bloqueados)}), ¡pero {target_group} bloqueó {', '.join(bloqueados)}! Racha rota a 0. (+{puntos_ganados} pts)."
+                    msg_type = "error" # Alerta roja indicando fallo parcial/interrupción de racha
+                else:
+                    msg_text = f"🚀 {login_user} hackeo limpio a {target_group} ({target_ip}) explotando: {', '.join(no_bloqueados)}. (+{puntos_ganados} pts)."
+                    msg_type = "success"
             else:
-                # El ataque falló por completo: se reinicia la racha del atacante a 0
                 state["teams"][login_user]["streak"] = 0
-                dota_effect = "STREAK ENDED / DEFENSE HOLD!"
-                msg_text = f"🛡️ ¡{target_group} bloqueó por completo todos los vectores de ataque de {login_user}! Racha interrumpida."
+                dota_effect = "STREAK ENDED / TOTAL DEFENSE HOLD!"
+                msg_text = f"🛡️ ¡{target_group} bloqueó ABSOLUTAMENTE todo! Ataque repelido por completo. Racha en 0."
                 msg_type = "error"
 
             state["last_attack_msg"] = {"type": msg_type, "text": msg_text, "dota_effect": dota_effect}
