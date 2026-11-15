@@ -127,7 +127,7 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
         """, unsafe_allow_html=True)
     else:
         if game_mode == "Rondas":
-            st.info(f"📍 **ESTADO DEL TORNEO:** Modo Rondas (Ataque y contraofensiva de defensa) | Ronda **{ronda_actual}** de **{max_rondas}**")
+            st.info(f"📍 **ESTADO DEL TORNEO:** Modo Rondas | Ronda **{ronda_actual}** de **{max_rondas}**")
         else:
             st.info(f"📍 **ESTADO DEL TORNEO:** Modo Libre (Sin límite de rondas)")
 
@@ -147,7 +147,7 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
         else:
             st.markdown(f"""
             <div style="background-color: #001a1a; border: 3px solid #00ffcc; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 25px;">
-                <h1 style="color: #00ffcc; font-size: 38px; margin: 0;">🛡️ DEFENSE HOLD / STREAK RESET! 🛡️</h1>
+                <h1 style="color: #00ffcc; font-size: 38px; margin: 0;">🛡️ PENALTY / DEFENSE HOLD! 🛡️</h1>
                 <p style="color: #ffffff; font-size: 22px; margin-top: 10px;">{msg_info['text']}</p>
             </div>
             """, unsafe_allow_html=True)
@@ -204,11 +204,10 @@ if login_user.lower() == "admin":
             st.success(f"¡Modo configurado a **{selected_mode}** con éxito!")
             st.rerun()
 
-    # Control manual para avanzar de ronda tras el intercambio completo (Ataque y contraataque)
     if state.get("game_mode", "Rondas") == "Rondas" and not state.get("game_over", False):
         st.markdown("---")
         st.subheader("🕹️ Control de Intercambio de Ronda")
-        st.info(f"Ronda Actual: **{state.get('current_round', 1)}** de **{state.get('max_rounds', 5)}**. (Haz clic aquí cuando ambos equipos hayan atacado y defendido en este ciclo).")
+        st.info(f"Ronda Actual: **{state.get('current_round', 1)}** de **{state.get('max_rounds', 5)}**.")
         if st.button("⏩ Avanzar a la Siguiente Ronda (Cerrar Intercambio Actual)", type="primary"):
             state["current_round"] += 1
             if state["current_round"] > state["max_rounds"]:
@@ -365,7 +364,7 @@ if game_mode == "Rondas" and state.get("game_over", False):
     st.stop()
 
 if game_mode == "Rondas":
-    st.info(f"⚔️ **Modo Rondas (Intercambio Dual):** Ronda actual **{state.get('current_round', 1)}** / {state.get('max_rounds', 5)} (El equipo ataca y el rival contraataca en su turno)")
+    st.info(f"⚔️ **Modo Rondas:** Ronda actual **{state.get('current_round', 1)}** / {state.get('max_rounds', 5)}")
 else:
     st.info(f"♾️ **Modo Libre:** Practica y compite sin límite de rondas.")
 
@@ -410,7 +409,7 @@ st.markdown("---")
 # FASE 2: PANEL DE ATAQUE
 # ==========================================
 st.subheader("⚔️ Fase 2: Panel de Ataque - Escaneo y Explotación (Red Team)")
-st.markdown("Selecciona el equipo rival y los protocolos que deseas vulnerar en tu turno de ataque:")
+st.markdown("Selecciona el equipo rival y los protocolos que deseas vulnerar (¡Cuidado! Atacar puertos bloqueados te restará puntos):")
 
 rivales_disponibles = [g for g in state.get("groups", {}).keys() if g != login_user]
 
@@ -437,17 +436,24 @@ else:
             bloqueados = [p for p in protocolos_a_atacar if p in defensas_rival]
             
             num_exitos = len(no_bloqueados)
-            puntos_ganados = num_exitos * 100
+            num_bloqueados = len(bloqueados)
+            
+            # CÁLCULO DE PUNTUACIÓN Y PENALIZACIÓN
+            # Cada puerto libre da +100 pts. Cada puerto bloqueado penaliza con -50 pts por intento fallido al azar.
+            puntos_ganados = (num_exitos * 100) - (num_bloqueados * 50)
             dano_defensa = num_exitos * 100
             
-            if bloqueados:
+            # Si hubo algún puerto bloqueado, se rompe la racha a 0
+            if num_bloqueados > 0:
                 state["teams"][login_user]["streak"] = 0
                 racha_rota = True
             else:
                 racha_rota = False
 
+            # Aplicar cambios al score del atacante (puede sumar o restar)
+            state["teams"][login_user]["score"] += puntos_ganados
+            
             if num_exitos > 0:
-                state["teams"][login_user]["score"] += puntos_ganados
                 defender["defense"] = max(0, defender["defense"] - dano_defensa)
                 
                 if not racha_rota:
@@ -468,15 +474,15 @@ else:
                     dota_effect = "FIRST BLOOD! / BREACH DETECTED!"
 
                 if racha_rota:
-                    msg_text = f"⚠️ {login_user} penetró parcialmente ({', '.join(no_bloqueados)}), ¡pero {target_group} bloqueó {', '.join(bloqueados)}! Racha rota a 0. (+{puntos_ganados} pts)."
+                    msg_text = f"⚠️ {login_user} penetró {num_exitos} puertos, pero cayó en {num_bloqueados} trampas bloqueadas por {target_group} ({', '.join(bloqueados)}). ¡Penalización aplicada! Score neto: {puntos_ganados:+d} pts."
                     msg_type = "error"
                 else:
                     msg_text = f"🚀 {login_user} hackeo limpio a {target_group} ({target_ip}) explotando: {', '.join(no_bloqueados)}. (+{puntos_ganados} pts)."
                     msg_type = "success"
             else:
                 state["teams"][login_user]["streak"] = 0
-                dota_effect = "STREAK ENDED / TOTAL DEFENSE HOLD!"
-                msg_text = f"🛡️ ¡{target_group} bloqueó ABSOLUTAMENTE todo! Ataque repelido por completo. Racha en 0."
+                dota_effect = "PENALTY / DEFENSE HOLD!"
+                msg_text = f"🛡️ ¡{target_group} bloqueó todo! {login_user} atacó puertos protegidos y recibe penalización de {puntos_ganados} pts. Racha en 0."
                 msg_type = "error"
 
             state["last_attack_msg"] = {"type": msg_type, "text": msg_text, "dota_effect": dota_effect}
