@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import os
+import time
 
 st.set_page_config(page_title="Cyber Arena - Live Esports Spectator", page_icon="🏆", layout="wide")
 
@@ -41,6 +42,7 @@ def guardar_estado(state):
     except Exception:
         pass
 
+# Cargar estado actual
 state = cargar_estado()
 
 # ==========================================
@@ -66,6 +68,15 @@ if not login_user:
 # ==========================================
 if login_user.lower() in ["spectator", "espectador", "screen"]:
     st.title("🏆 CYBER ARENA - BROADCAST CENTER (PANTALLA GIGANTE) ⚔️")
+    
+    # Controles superiores para el espectador
+    col_ctrl1, col_ctrl2 = st.columns([2, 2])
+    with col_ctrl1:
+        if st.button("⚡ Actualizar Eventos y Tablero Ahora", type="primary"):
+            st.rerun()
+    with col_ctrl2:
+        auto_refresh = st.checkbox("Activar Auto-Refresco (cada 5 segundos)", value=False)
+
     st.markdown("---")
     
     if state.get("last_attack_msg"):
@@ -112,9 +123,12 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
         st.dataframe(equipos_ordenados, use_container_width=True, height=400)
     else:
         st.info("No hay equipos participando todavía.")
-        
-    if st.button("🔄 Actualizar Pantalla de Espectador"):
+
+    # Lógica de auto-refresco si está activado
+    if auto_refresh:
+        time.sleep(5)
         st.rerun()
+        
     st.stop()
 
 # ==========================================
@@ -188,6 +202,9 @@ st.sidebar.success(f"Sesión: **{login_user}**")
 st.sidebar.info(f"IP: **{my_ip}**")
 
 st.header(f"Panel de Control: {login_user}")
+
+if st.button("🔄 Actualizar Mis Datos / Ver Últimos Eventos"):
+    st.rerun()
 
 if state.get("last_attack_msg"):
     msg_info = state["last_attack_msg"]
@@ -290,5 +307,5 @@ for g, ip in state["groups"].items():
 
 st.table(table_data)
 
-if st.button("🔄 Actualizar Tablero"):
+if st.button("🔄 Actualizar Tabla General"):
     st.rerun()
