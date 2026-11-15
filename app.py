@@ -68,7 +68,6 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
     st.title("🏆 CYBER ARENA - BROADCAST CENTER (PANTALLA GIGANTE) ⚔️")
     st.markdown("---")
     
-    # Efecto visual tipo Dota (Banner de anuncio épico)
     if state.get("last_attack_msg"):
         msg_info = state["last_attack_msg"]
         dota_effect = msg_info.get("dota_effect", "ANNOUNCEMENT")
@@ -96,7 +95,6 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
 
     st.subheader("📊 Tabla de Posiciones en Vivo (Live Leaderboard)")
     
-    # Ordenar equipos por score de mayor a menor
     equipos_ordenados = []
     for g, ip in state["groups"].items():
         t_data = state["teams"].get(g, {"score": 0, "defense": 1000, "defenses_active": []})
@@ -206,7 +204,6 @@ with col2:
 
 st.markdown("---")
 
-# Panel Defensivo
 st.subheader("🛡️ Panel Defensivo - Bloqueo de Protocolos (Blue Team)")
 defenses_actuales = my_data.get("defenses_active", [])
 nuevas_defensas = []
@@ -223,7 +220,6 @@ if set(nuevas_defensas) != set(defenses_actuales):
 
 st.markdown("---")
 
-# Panel de Ataque
 st.subheader("⚔️ Panel de Ataque - Escaneo de Protocolos (Red Team)")
 rivales_disponibles = [g for g in state["groups"].keys() if g != login_user]
 
@@ -256,7 +252,6 @@ else:
             state["teams"][login_user]["score"] += puntos_ganados
             defender["defense"] = max(0, defender["defense"] - dano_defensa)
             
-            # Generar efectos visuales estilo Dota según la cantidad de protocolos vulnerados
             if num_exitos >= 4:
                 dota_effect = "RAMPAGE! / CATASTROPHIC BREACH!"
             elif num_exitos == 3:
@@ -279,4 +274,21 @@ else:
             guardar_estado(state)
             st.rerun()
 
-st.
+st.markdown("---")
+
+st.subheader("📋 Estado General de la Red en Vivo")
+table_data = []
+for g, ip in state["groups"].items():
+    t_data = state["teams"].get(g, {"score": 0, "defense": 1000, "defenses_active": []})
+    table_data.append({
+        "Grupo": g,
+        "IP Fija": ip,
+        "Score Ataque": t_data["score"],
+        "Salud Defensiva": t_data["defense"],
+        "Protocolos Asegurados": ", ".join([p.split()[0] for p in t_data.get("defenses_active", [])]) if t_data.get("defenses_active") else "Ninguno ⚠️"
+    })
+
+st.table(table_data)
+
+if st.button("🔄 Actualizar Tablero"):
+    st.rerun()
