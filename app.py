@@ -2,11 +2,9 @@ import streamlit as st
 import json
 import os
 
-st.set_page_config(page_title="Cyber Arena - Protocol Security", page_icon="🛡️", layout="centered")
+st.set_page_config(page_title="Cyber Arena - Live Esports Spectator", page_icon="🏆", layout="wide")
 
 DB_FILE = "arena_state.json"
-
-# Lista oficial de protocolos disponibles en la arena
 PROTOCOLOS_DISPONIBLES = ["SSH (Puerto 22)", "HTTP/Web (Puerto 80/443)", "RDP (Puerto 3389)", "SMB (Puerto 445)", "FTP (Puerto 21)"]
 
 def cargar_estado():
@@ -45,17 +43,16 @@ def guardar_estado(state):
 
 state = cargar_estado()
 
-st.title("🛡️ CYBER ARENA - PROTOCOLOS DE RED ⚔️")
-st.markdown("---")
-
 # ==========================================
 # LOGIN / AUTENTICACIÓN
 # ==========================================
 st.sidebar.header("🔐 Acceso a la Plataforma")
-login_user = st.sidebar.text_input("Nombre de Usuario / Grupo", value="")
+login_user = st.sidebar.text_input("Usuario / Grupo / spectator", value="")
 
 if not login_user:
-    st.info("👈 Ingresa tu nombre de grupo o 'admin' en la barra lateral para comenzar.")
+    st.title("🏆 CYBER ARENA - LIVE ESPORTS STREAM ⚔️")
+    st.info("👈 Escribe **`spectator`** en la barra lateral para ver la pantalla gigante de proyección o ingresa tu grupo.")
+    
     st.subheader("📋 Grupos Registrados en la Red")
     if state.get("groups"):
         preview_data = [{"Grupo": g, "IP Asignada": ip} for g, ip in state["groups"].items()]
@@ -64,7 +61,67 @@ if not login_user:
         st.warning("Aún no hay grupos creados. Entra como 'admin' para crearlos.")
     st.stop()
 
-# Validar Administrador
+# ==========================================
+# VISTA DE ESPECTADOR (PROYECCIÓN / PANTALLA GIGANTE)
+# ==========================================
+if login_user.lower() in ["spectator", "espectador", "screen"]:
+    st.title("🏆 CYBER ARENA - BROADCAST CENTER (PANTALLA GIGANTE) ⚔️")
+    st.markdown("---")
+    
+    # Efecto visual tipo Dota (Banner de anuncio épico)
+    if state.get("last_attack_msg"):
+        msg_info = state["last_attack_msg"]
+        dota_effect = msg_info.get("dota_effect", "ANNOUNCEMENT")
+        
+        if msg_info["type"] == "success":
+            st.markdown(f"""
+            <div style="background-color: #1a0000; border: 3px solid #ffcc00; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 25px;">
+                <h1 style="color: #ffcc00; font-size: 38px; margin: 0;">🔥 {dota_effect} 🔥</h1>
+                <p style="color: #ffffff; font-size: 22px; margin-top: 10px;">{msg_info['text']}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div style="background-color: #001a1a; border: 3px solid #00ffcc; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 25px;">
+                <h1 style="color: #00ffcc; font-size: 38px; margin: 0;">🛡️ DEFENSE HOLD! 🛡️</h1>
+                <p style="color: #ffffff; font-size: 22px; margin-top: 10px;">{msg_info['text']}</p>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="background-color: #111; border: 2px dashed #444; padding: 15px; border-radius: 10px; text-align: center; margin-bottom: 25px;">
+            <h3 style="color: #888; margin: 0;">📡 ESPERANDO ACTIVIDAD DE RED... ¡PREPÁRENSE PARA LA CAZA!</h3>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.subheader("📊 Tabla de Posiciones en Vivo (Live Leaderboard)")
+    
+    # Ordenar equipos por score de mayor a menor
+    equipos_ordenados = []
+    for g, ip in state["groups"].items():
+        t_data = state["teams"].get(g, {"score": 0, "defense": 1000, "defenses_active": []})
+        equipos_ordenados.append({
+            "Grupo": g,
+            "IP Fija": ip,
+            "Score Ataque": t_data["score"],
+            "Salud Defensiva": t_data["defense"],
+            "Protocolos Asegurados": len(t_data.get("defenses_active", []))
+        })
+    
+    equipos_ordenados = sorted(equipos_ordenados, key=lambda x: x["Score Ataque"], reverse=True)
+    
+    if equipos_ordenados:
+        st.dataframe(equipos_ordenados, use_container_width=True, height=400)
+    else:
+        st.info("No hay equipos participando todavía.")
+        
+    if st.button("🔄 Actualizar Pantalla de Espectador"):
+        st.rerun()
+    st.stop()
+
+# ==========================================
+# VALIDAR ADMIN
+# ==========================================
 if login_user.lower() == "admin":
     st.sidebar.success("✅ Sesión: ADMINISTRADOR")
     st.header("🛠️ Panel de Administración de Red")
@@ -85,7 +142,7 @@ if login_user.lower() == "admin":
                         "role": "team",
                         "score": 0,
                         "defense": 1000,
-                        "defenses_active": [] # Lista de protocolos bloqueados
+                        "defenses_active": []
                     }
                 else:
                     state["teams"][nuevo_grupo]["ip"] = nueva_ip
@@ -110,7 +167,7 @@ if login_user.lower() == "admin":
     st.stop()
 
 # ==========================================
-# VISTA DE EQUIPOS
+# VISTA DE EQUIPOS PARTICIPANTES
 # ==========================================
 if login_user not in state["groups"]:
     st.error(f"[!] El usuario '{login_user}' no está registrado. Pídele al admin que cree tu grupo.")
@@ -134,7 +191,6 @@ st.sidebar.info(f"IP: **{my_ip}**")
 
 st.header(f"Panel de Control: {login_user}")
 
-# Mostrar alertas de ataques en tiempo real
 if state.get("last_attack_msg"):
     msg_info = state["last_attack_msg"]
     if msg_info["type"] == "success":
@@ -150,12 +206,8 @@ with col2:
 
 st.markdown("---")
 
-# ==========================================
-# PANEL DEFENSIVO (Seleccionar protocolos a blindar)
-# ==========================================
+# Panel Defensivo
 st.subheader("🛡️ Panel Defensivo - Bloqueo de Protocolos (Blue Team)")
-st.markdown("Selecciona qué protocolos deseas endurecer / bloquear con reglas de firewall y parches:")
-
 defenses_actuales = my_data.get("defenses_active", [])
 nuevas_defensas = []
 
@@ -171,11 +223,8 @@ if set(nuevas_defensas) != set(defenses_actuales):
 
 st.markdown("---")
 
-# ==========================================
-# PANEL DE ATAQUE (Seleccionar protocolos a vulnerar)
-# ==========================================
+# Panel de Ataque
 st.subheader("⚔️ Panel de Ataque - Escaneo de Protocolos (Red Team)")
-
 rivales_disponibles = [g for g in state["groups"].keys() if g != login_user]
 
 if not rivales_disponibles:
@@ -185,7 +234,6 @@ else:
     target_ip = state["groups"][target_group]
     st.text(f"IP Objetivo: {target_ip}")
     
-    st.markdown("Selecciona los **protocolos que deseas atacar** en esta oleada:")
     protocolos_a_atacar = []
     for proto in PROTOCOLOS_DISPONIBLES:
         if st.checkbox(f"Atacar {proto}", key=f"atk_{proto}"):
@@ -198,48 +246,37 @@ else:
             defender = state["teams"][target_group]
             defensas_rival = defender.get("defenses_active", [])
             
-            # Evaluar qué protocolos pasaron y cuáles fueron bloqueados
             no_bloqueados = [p for p in protocolos_a_atacar if p not in defensas_rival]
             bloqueados = [p for p in protocolos_a_atacar if p in defensas_rival]
             
-            puntos_ganados = len(no_bloqueados) * 100
-            dano_defensa = len(no_bloqueados) * 100
+            num_exitos = len(no_bloqueados)
+            puntos_ganados = num_exitos * 100
+            dano_defensa = num_exitos * 100
             
             state["teams"][login_user]["score"] += puntos_ganados
             defender["defense"] = max(0, defender["defense"] - dano_defensa)
             
+            # Generar efectos visuales estilo Dota según la cantidad de protocolos vulnerados
+            if num_exitos >= 4:
+                dota_effect = "RAMPAGE! / CATASTROPHIC BREACH!"
+            elif num_exitos == 3:
+                dota_effect = "UNSTOPPABLE! / MULTI-KILL HACK!"
+            elif num_exitos == 2:
+                dota_effect = "DOMINATING! / DOUBLE BREACH!"
+            elif num_exitos == 1:
+                dota_effect = "FIRST BLOOD! / BREACH DETECTED!"
+            else:
+                dota_effect = "TOTAL BLOCKED / DEFENSE HOLD!"
+
             if no_bloqueados:
-                msg_text = f"[🚀 ¡BRECHA EXITOSA!] {login_user} atacó a {target_group} ({target_ip}). Protocolos vulnerables explotados: {', '.join(no_bloqueados)}. (+{puntos_ganados} pts)."
+                msg_text = f"{login_user} penetró los sistemas de {target_group} ({target_ip}) explotando: {', '.join(no_bloqueados)}. (+{puntos_ganados} pts)."
                 msg_type = "success"
             else:
-                msg_text = f"[❌ BLOQUEADO TOTAL] {target_group} tenía seguros todos los protocolos que intentaste atacar. Ninguna brecha abierta."
+                msg_text = f"¡{target_group} bloqueó con éxito todos los vectores de ataque lanzados por {login_user}!"
                 msg_type = "error"
-                
-            if bloqueados:
-                msg_text += f" (Bloqueados por el rival: {', '.join(bloqueados)})"
 
-            state["last_attack_msg"] = {"type": msg_type, "text": msg_text}
+            state["last_attack_msg"] = {"type": msg_type, "text": msg_text, "dota_effect": dota_effect}
             guardar_estado(state)
             st.rerun()
 
-st.markdown("---")
-
-# ==========================================
-# ESTADO GENERAL DE LA RED
-# ==========================================
-st.subheader("📋 Estado General de la Red en Vivo")
-table_data = []
-for g, ip in state["groups"].items():
-    t_data = state["teams"].get(g, {"score": 0, "defense": 1000, "defenses_active": []})
-    table_data.append({
-        "Grupo": g,
-        "IP Fija": ip,
-        "Score Ataque": t_data["score"],
-        "Salud Defensiva": t_data["defense"],
-        "Protocolos Asegurados": ", ".join([p.split()[0] for p in t_data.get("defenses_active", [])]) if t_data.get("defenses_active") else "Ninguno ⚠️"
-    })
-
-st.table(table_data)
-
-if st.button("🔄 Actualizar Tablero"):
-    st.rerun()
+st.
