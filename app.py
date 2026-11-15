@@ -29,7 +29,7 @@ def cargar_estado():
             return {"teams": {}, "groups": {}, "last_attack_msg": None}
     return {
         "teams": {
-            "admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": []}
+            "admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}
         },
         "groups": {},
         "last_attack_msg": None
@@ -69,7 +69,6 @@ if not login_user:
 if login_user.lower() in ["spectator", "espectador", "screen"]:
     st.title("🏆 CYBER ARENA - BROADCAST CENTER (PANTALLA GIGANTE) ⚔️")
     
-    # Controles superiores para el espectador
     col_ctrl1, col_ctrl2 = st.columns([2, 2])
     with col_ctrl1:
         if st.button("⚡ Actualizar Eventos y Tablero Ahora", type="primary"):
@@ -93,7 +92,7 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
         else:
             st.markdown(f"""
             <div style="background-color: #001a1a; border: 3px solid #00ffcc; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 25px;">
-                <h1 style="color: #00ffcc; font-size: 38px; margin: 0;">🛡️ DEFENSE HOLD! 🛡️</h1>
+                <h1 style="color: #00ffcc; font-size: 38px; margin: 0;">🛡️ DEFENSE HOLD! (STREAK RESET) 🛡️</h1>
                 <p style="color: #ffffff; font-size: 22px; margin-top: 10px;">{msg_info['text']}</p>
             </div>
             """, unsafe_allow_html=True)
@@ -108,12 +107,13 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
     
     equipos_ordenados = []
     for g, ip in state["groups"].items():
-        t_data = state["teams"].get(g, {"score": 0, "defense": 1000, "defenses_active": []})
+        t_data = state["teams"].get(g, {"score": 0, "defense": 1000, "defenses_active": [], "streak": 0})
         equipos_ordenados.append({
             "Grupo": g,
             "IP Fija": ip,
             "Score Ataque": t_data["score"],
             "Salud Defensiva": t_data["defense"],
+            "Racha Activa 🔥": t_data.get("streak", 0),
             "Protocolos Asegurados": len(t_data.get("defenses_active", []))
         })
     
@@ -124,7 +124,6 @@ if login_user.lower() in ["spectator", "espectador", "screen"]:
     else:
         st.info("No hay equipos participando todavía.")
 
-    # Lógica de auto-refresco si está activado
     if auto_refresh:
         time.sleep(5)
         st.rerun()
@@ -154,7 +153,8 @@ if login_user.lower() == "admin":
                         "role": "team",
                         "score": 0,
                         "defense": 1000,
-                        "defenses_active": []
+                        "defenses_active": [],
+                        "streak": 0
                     }
                 else:
                     state["teams"][nuevo_grupo]["ip"] = nueva_ip
@@ -170,7 +170,7 @@ if login_user.lower() == "admin":
         st.info("No hay grupos todavía.")
         
     if st.button("🗑️ Reiniciar Toda la Arena"):
-        state["teams"] = {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": []}}
+        state["teams"] = {"admin": {"ip": "192.168.128.3", "role": "admin", "score": 0, "defense": 1000, "defenses_active": [], "streak": 0}}
         state["groups"] = {}
         state["last_attack_msg"] = None
         guardar_estado(state)
@@ -191,7 +191,8 @@ if login_user not in state["teams"]:
         "role": "team",
         "score": 0,
         "defense": 1000,
-        "defenses_active": []
+        "defenses_active": [],
+        "streak": 0
     }
     guardar_estado(state)
 
@@ -213,11 +214,13 @@ if state.get("last_attack_msg"):
     else:
         st.error(msg_info["text"])
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 with col1:
     st.metric(label="Score de Ataque", value=my_data["score"])
 with col2:
     st.metric(label="Salud Defensiva", value=my_data["defense"])
+with col3:
+    st.metric(label="Racha Actual (Streak)", value=my_data.get("streak", 0))
 
 st.markdown("---")
 
@@ -266,25 +269,34 @@ else:
             puntos_ganados = num_exitos * 100
             dano_defensa = num_exitos * 100
             
-            state["teams"][login_user]["score"] += puntos_ganados
-            defender["defense"] = max(0, defender["defense"] - dano_defensa)
-            
-            if num_exitos >= 4:
-                dota_effect = "RAMPAGE! / CATASTROPHIC BREACH!"
-            elif num_exitos == 3:
-                dota_effect = "UNSTOPPABLE! / MULTI-KILL HACK!"
-            elif num_exitos == 2:
-                dota_effect = "DOMINATING! / DOUBLE BREACH!"
-            elif num_exitos == 1:
-                dota_effect = "FIRST BLOOD! / BREACH DETECTED!"
-            else:
-                dota_effect = "TOTAL BLOCKED / DEFENSE HOLD!"
+            if num_exitos > 0:
+                # El ataque fue exitoso: sumamos puntos y aumentamos la racha del equipo
+                state["teams"][login_user]["score"] += puntos_ganados
+                defender["defense"] = max(0, defender["defense"] - dano_defensa)
+                
+                # Incrementar racha acumulada
+                current_streak = state["teams"][login_user].get("streak", 0) + 1
+                state["teams"][login_user]["streak"] = current_streak
+                
+                # Asignar efecto épico basado en la racha acumulada en cadena
+                if current_streak >= 5:
+                    dota_effect = f"GODLIKE! ({current_streak}ª Racha de Brechas)"
+                elif current_streak == 4:
+                    dota_effect = f"RAMPAGE! ({current_streak}ª Racha de Brechas)"
+                elif current_streak == 3:
+                    dota_effect = f"UNSTOPPABLE! ({current_streak}ª Racha de Brechas)"
+                elif current_streak == 2:
+                    dota_effect = f"DOMINATING! ({current_streak}ª Racha de Brechas)"
+                else:
+                    dota_effect = "FIRST BLOOD! / BREACH DETECTED!"
 
-            if no_bloqueados:
-                msg_text = f"{login_user} penetró los sistemas de {target_group} ({target_ip}) explotando: {', '.join(no_bloqueados)}. (+{puntos_ganados} pts)."
+                msg_text = f"🚀 {login_user} penetró los sistemas de {target_group} ({target_ip}) explotando: {', '.join(no_bloqueados)}. (+{puntos_ganados} pts)."
                 msg_type = "success"
             else:
-                msg_text = f"¡{target_group} bloqueó con éxito todos los vectores de ataque lanzados por {login_user}!"
+                # El ataque falló por completo: se reinicia la racha del atacante a 0
+                state["teams"][login_user]["streak"] = 0
+                dota_effect = "STREAK ENDED / DEFENSE HOLD!"
+                msg_text = f"🛡️ ¡{target_group} bloqueó por completo todos los vectores de ataque de {login_user}! Racha interrumpida."
                 msg_type = "error"
 
             state["last_attack_msg"] = {"type": msg_type, "text": msg_text, "dota_effect": dota_effect}
@@ -296,12 +308,13 @@ st.markdown("---")
 st.subheader("📋 Estado General de la Red en Vivo")
 table_data = []
 for g, ip in state["groups"].items():
-    t_data = state["teams"].get(g, {"score": 0, "defense": 1000, "defenses_active": []})
+    t_data = state["teams"].get(g, {"score": 0, "defense": 1000, "defenses_active": [], "streak": 0})
     table_data.append({
         "Grupo": g,
         "IP Fija": ip,
         "Score Ataque": t_data["score"],
         "Salud Defensiva": t_data["defense"],
+        "Racha 🔥": t_data.get("streak", 0),
         "Protocolos Asegurados": ", ".join([p.split()[0] for p in t_data.get("defenses_active", [])]) if t_data.get("defenses_active") else "Ninguno ⚠️"
     })
 
